@@ -1,4 +1,7 @@
 rootProject.name = "lmska"
-include("context")
-include("cli")
-include("reflection")
+include("bring")
+include("lmska-cli")
+include("lmska-core")
+include("lmska-dao")
+include("lmska-common")
+include("lmska-common")
