@@ -9,7 +9,9 @@ import java.lang.annotation.Annotation;
 import java.util.List;
 import java.util.Set;
 
-
+/**
+ * Обработчи анотации ComponentScan
+ */
 public class ComponentScanHandler {
     public List<BeanDefinition> handle(Class<?> configClass) {
         ComponentScan scan = findComponentScan(configClass);
@@ -17,7 +19,7 @@ public class ComponentScanHandler {
             throw new IllegalStateException("ComponentScan not found: " + configClass.getName());
         }
 
-        String basePackage = scan.value().isEmpty() ? configClass.getPackageName() : scan.value();
+        String basePackage = scan.value().isBlank() ? configClass.getPackageName() : scan.value();
         Set<ClassMetadata> metadata = ReflectionUtils.scanClassFiles(basePackage);
         Set<Class<?>> components = ReflectionUtils.findAnnotatedClasses(metadata, Component.class);
         return components.stream().map(BeanDefinition::new).toList();

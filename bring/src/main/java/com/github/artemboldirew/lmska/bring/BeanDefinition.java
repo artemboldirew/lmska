@@ -6,6 +6,9 @@ import java.lang.reflect.Constructor;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Класс-описание бина
+ */
 public class BeanDefinition {
     private final Class<?> clazz;
     private final List<Class<?>> parameters;
@@ -23,12 +26,10 @@ public class BeanDefinition {
         Constructor<?>[] constructors = clazz.getDeclaredConstructors();
 
         if (constructors.length != 1) {
-            throw new IllegalStateException(
-                    "Expected one constructor: " + clazz.getName()
-            );
+            throw new IllegalStateException("Expected one constructor: " + clazz.getName());
         }
         this.constructor = constructors[0];
-        this.parameters = List.of(clazz.getConstructors()[0].getParameterTypes());
+        this.parameters = List.of(constructor.getParameterTypes());
         this.interfaces = ReflectionUtils.getAllInterfaces(clazz);
     }
 

@@ -5,6 +5,13 @@ plugins {
 group = "com.github.artemboldirew"
 version = "1.0-SNAPSHOT"
 
+allprojects {
+    tasks.withType<JavaCompile>().configureEach {
+        options.encoding = "UTF-8"
+        options.release.set(21)
+    }
+}
+
 repositories {
     mavenCentral()
 }
