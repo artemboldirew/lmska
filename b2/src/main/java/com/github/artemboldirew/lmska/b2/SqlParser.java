@@ -8,6 +8,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class SqlParser {
+    // помогает разделить запрос
     private static final Pattern TOKEN = Pattern.compile(
             "\\s+|'(?:''|[^'])*'|[A-Za-z_]\\w*|\\d+(?:\\.\\d+)?|>=|<=|!=|<>|[(),.*;=<>?\\-]");
     private static final Set<String> KEYWORDS = Set.of(
@@ -39,10 +40,10 @@ final class SqlParser {
         else if (take("INSERT")) result = insert();
         else if (take("UPDATE")) result = update();
         else if (take("DELETE")) result = delete();
-        else throw error("Unknown SQL statement");
+        else throw new IllegalArgumentException("Unknown SQL statement");
         take(";");
-        if (!peek().equals("<EOF>")) throw error("Unexpected token: " + peek());
-        if (parameterAt != params.length) throw error("Unused parameters");
+        if (!tokens.get(at).equals("<EOF>")) throw new IllegalArgumentException("Unexpected token: " + tokens.get(at));
+        if (parameterAt != params.length) throw new IllegalArgumentException("Unused parameters");
         return result;
     }
 
@@ -74,7 +75,7 @@ final class SqlParser {
             expect("BY");
             do {
                 Expr expr = expression();
-                if (!(expr instanceof Column)) throw error("ORDER BY requires a column");
+                if (!(expr instanceof Column)) throw new IllegalArgumentException("ORDER BY requires a column");
                 boolean ascending = !take("DESC");
                 if (ascending) take("ASC");
                 orders.add(new Order(expr, ascending));
@@ -96,7 +97,7 @@ final class SqlParser {
         do {
             String column = name();
             columns.add(column);
-            if (isName(peek()) && !peek().equalsIgnoreCase("PRIMARY")) {
+            if (isName(tokens.get(at)) && !tokens.get(at).equalsIgnoreCase("PRIMARY")) {
                 name();
                 if (take("(")) {
                     integer();
@@ -106,7 +107,7 @@ final class SqlParser {
             }
             if (take("PRIMARY")) {
                 expect("KEY");
-                if (pk != null) throw error("Only one primary key is supported");
+                if (pk != null) throw new IllegalArgumentException("Only one primary key is supported");
                 pk = column;
             }
         } while (take(","));
@@ -135,7 +136,7 @@ final class SqlParser {
                 values.add(literal());
             } while (take(","));
             expect(")");
-            if (values.size() != columns.size()) throw error("INSERT column count mismatch");
+            if (values.size() != columns.size()) throw new IllegalArgumentException("INSERT column count mismatch");
             rows.add(values);
         } while (take(","));
         return new Insert(table, columns, rows);
@@ -152,7 +153,7 @@ final class SqlParser {
         do {
             String column = name();
             expect("=");
-            if (changes.putIfAbsent(column, literal()) != null) throw error("Duplicate column: " + column);
+            if (changes.putIfAbsent(column, literal()) != null) throw new IllegalArgumentException("Duplicate column: " + column);
         } while (take(","));
         return new Update(table, changes, take("WHERE") ? condition() : null);
     }
@@ -195,7 +196,7 @@ final class SqlParser {
         else if (take("<=")) op = Operator.LE;
         else if (take(">")) op = Operator.GT;
         else if (take("<")) op = Operator.LT;
-        else throw error("Expected comparison operator");
+        else throw new IllegalArgumentException("Expected comparison operator");
         return new Comparison(left, op, expression());
     }
 
@@ -205,11 +206,11 @@ final class SqlParser {
         return new TableRef(table, alias == null ? table : alias);
     }
     private String optionalAlias() {
-        return isName(peek()) && !KEYWORDS.contains(peek().toUpperCase(Locale.ROOT)) ? next() : null;
+        return isName(tokens.get(at)) && !KEYWORDS.contains(tokens.get(at).toUpperCase(Locale.ROOT)) ? next() : null;
     }
     private Expr literal() {
         Expr e = expression();
-        if (!(e instanceof Literal)) throw error("Expected a literal or ?");
+        if (!(e instanceof Literal)) throw new IllegalArgumentException("Expected a literal or ?");
         return e;
     }
     /**
@@ -218,18 +219,19 @@ final class SqlParser {
      */
     private Expr expression() {
         if (take("?")) {
-            if (parameterAt == params.length) throw error("Missing parameter");
+            if (parameterAt == params.length) throw new IllegalArgumentException("Missing parameter");
             return new Literal(params[parameterAt++]);
         }
         if (take("*")) return new Star(null);
         if (take("-")) return new Literal(number("-" + next()));
         String token = next();
         if (token.startsWith("'")) return new Literal(token.substring(1, token.length() - 1).replace("''", "'"));
+        // если токен это число
         if (token.matches("\\d+(?:\\.\\d+)?")) return new Literal(number(token));
         if (token.equalsIgnoreCase("NULL")) return new Literal(null);
         if (token.equalsIgnoreCase("TRUE")) return new Literal(true);
         if (token.equalsIgnoreCase("FALSE")) return new Literal(false);
-        if (!isName(token)) throw error("Expected value or column, got: " + token);
+        if (!isName(token)) throw new IllegalArgumentException("Expected value or column, got: " + token);
         if (take("(")) throw new UnsupportedOperationException("SQL functions are unsupported: " + token);
         if (take(".")) return take("*") ? new Star(token) : new Column(token, name());
         return new Column(null, token);
@@ -238,41 +240,38 @@ final class SqlParser {
         try {
             return text.contains(".") ? new BigDecimal(text) : Long.valueOf(text);
         } catch (NumberFormatException ex) {
-            throw error("Invalid number: " + text);
+            throw new IllegalArgumentException("Invalid number: " + text);
         }
     }
     private int integer() {
         String token = next();
-        if (!token.matches("\\d+")) throw error("Expected integer");
+        if (!token.matches("\\d+")) throw new IllegalArgumentException("Expected integer");
         return Integer.parseInt(token);
     }
     private String name() {
         String token = next();
         if (!isName(token) || KEYWORDS.contains(token.toUpperCase(Locale.ROOT)))
-            throw error("Expected identifier, got: " + token);
+            throw new IllegalArgumentException("Expected identifier, got: " + token);
         return token;
     }
     private static boolean isName(String s) {
         return s.matches("[A-Za-z_]\\w*");
     }
+
+    // проверяет совпадает ли текущий токен с ожидаемым
     private boolean take(String text) {
-        if (peek().equalsIgnoreCase(text)) {
+        if (tokens.get(at).equalsIgnoreCase(text)) {
             at++;
             return true;
         }
         return false;
     }
     private void expect(String text) {
-        if (!take(text)) throw error("Expected " + text + ", got " + peek());
+        if (!take(text)) throw new IllegalArgumentException("Expected " + text + ", got " + tokens.get(at));
     }
-    private String peek() {
-        return tokens.get(at);
-    }
+
     private String next() {
         return tokens.get(at++);
-    }
-    private IllegalArgumentException error(String text) {
-        return new IllegalArgumentException(text);
     }
 
     /**
